@@ -6,14 +6,13 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io/ioutil"
-	"math"
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"time"
 
 	"github.com/golang/protobuf/proto"
+	"github.com/gosuri/uitable"
 	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -51,12 +50,12 @@ func main() {
 }
 
 func run(cmd *cobra.Command, args []string) error {
-	releases, printData, err := listReleases(namespace, storage, tillerNamespace, label, since)
+	releases, err := listReleases(namespace, storage, tillerNamespace, label, since)
 	if err != nil {
 		return err
 	}
 
-	print(releases, *printData)
+	print(releases)
 	return nil
 }
 
@@ -70,37 +69,26 @@ type releaseData struct {
 	time      time.Time
 }
 
-type printColumnWidthData struct {
-	name      int
-	revision  int
-	updated   int
-	status    int
-	chart     int
-	namespace int
-}
-
-func listReleases(namespace, storage, tillerNamespace, label string, since time.Duration) ([]releaseData, *printColumnWidthData, error) {
-	k8sClient, err := GetClientToK8s()
+func listReleases(namespace, storage, tillerNamespace, label string, since time.Duration) ([]releaseData, error) {
+	k8sClientSet, err := GetClientToK8s()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	var releasesData []releaseData
-	printData := initPrintData()
-	coreV1 := k8sClient.ClientSet.CoreV1()
+	coreV1 := k8sClientSet.CoreV1()
 	switch storage {
 	case "secrets":
 		secrets, err := coreV1.Secrets(tillerNamespace).List(metav1.ListOptions{
 			LabelSelector: label,
 		})
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		for _, item := range secrets.Items {
 			releaseData := getReleaseData((string)(item.Data["release"]))
 			if releaseData == nil {
 				continue
 			}
-			printData = getPrintData(*releaseData, printData)
 			releasesData = append(releasesData, *releaseData)
 		}
 	case "cfgmaps":
@@ -108,14 +96,13 @@ func listReleases(namespace, storage, tillerNamespace, label string, since time.
 			LabelSelector: label,
 		})
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		for _, item := range configMaps.Items {
 			releaseData := getReleaseData(item.Data["release"])
 			if releaseData == nil {
 				continue
 			}
-			printData = getPrintData(*releaseData, printData)
 			releasesData = append(releasesData, *releaseData)
 		}
 	}
@@ -124,7 +111,7 @@ func listReleases(namespace, storage, tillerNamespace, label string, since time.
 		return releasesData[i].time.Before(releasesData[j].time)
 	})
 
-	return releasesData, &printData, nil
+	return releasesData, nil
 }
 
 func getReleaseData(itemReleaseData string) *releaseData {
@@ -150,33 +137,8 @@ func getReleaseData(itemReleaseData string) *releaseData {
 	return &releaseData
 }
 
-func initPrintData() printColumnWidthData {
-	return printColumnWidthData{
-		name:      len("NAME"),
-		revision:  len("REVISION"),
-		updated:   len("Mon Jan _2 15:04:05 2006"),
-		status:    len("STATUS"),
-		chart:     len("CHART"),
-		namespace: len("NAMESPACE"),
-	}
-}
-
-func getPrintData(releaseData releaseData, printData printColumnWidthData) printColumnWidthData {
-	printData.name = int(math.Max(float64(printData.name), float64(len(releaseData.name))))
-	printData.status = int(math.Max(float64(printData.status), float64(len(releaseData.status))))
-	printData.chart = int(math.Max(float64(printData.chart), float64(len(releaseData.chart))))
-	printData.namespace = int(math.Max(float64(printData.namespace), float64(len(releaseData.namespace))))
-	return printData
-}
-
-// K8sClient holds a clientset and a config
-type K8sClient struct {
-	ClientSet *kubernetes.Clientset
-	Config    *rest.Config
-}
-
-// GetClientToK8s returns a k8sClient
-func GetClientToK8s() (*K8sClient, error) {
+// GetClientToK8s returns a k8s ClientSet
+func GetClientToK8s() (*kubernetes.Clientset, error) {
 	var kubeconfig string
 	if kubeConfigPath := os.Getenv("KUBECONFIG"); kubeConfigPath != "" {
 		kubeconfig = kubeConfigPath // CI process
@@ -205,8 +167,8 @@ func GetClientToK8s() (*K8sClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	var client = &K8sClient{ClientSet: clientset, Config: config}
-	return client, nil
+
+	return clientset, nil
 }
 
 var b64 = base64.StdEncoding
@@ -242,20 +204,22 @@ func decodeRelease(data string) (*rspb.Release, error) {
 	return &rls, nil
 }
 
-func print(releases []releaseData, printData printColumnWidthData) {
+func print(releases []releaseData) {
 	if len(releases) == 0 {
 		return
 	}
 
-	nameCW := strconv.Itoa(printData.name)
-	revisionCW := strconv.Itoa(printData.revision)
-	updatedCW := strconv.Itoa(printData.updated)
-	statusCW := strconv.Itoa(printData.status)
-	chartCW := strconv.Itoa(printData.chart)
-	namespaceCW := strconv.Itoa(printData.namespace)
+	fmt.Println((string)(formatAsTable(releases)))
+}
 
-	fmt.Printf("%-"+nameCW+"s\t%-"+revisionCW+"s\t%-"+updatedCW+"s\t%-"+statusCW+"s\t%-"+chartCW+"s\t%-"+namespaceCW+"s\n", "NAME", "REVISION", "UPDATED", "STATUS", "CHART", "NAMESPACE")
-	for _, r := range releases {
-		fmt.Printf("%-"+nameCW+"s\t%-"+revisionCW+"d\t%-"+updatedCW+"s\t%-"+statusCW+"s\t%-"+chartCW+"s\t%-"+namespaceCW+"s\n", r.name, r.revision, r.updated, r.status, r.chart, r.namespace)
+func formatAsTable(releases []releaseData) []byte {
+	tbl := uitable.New()
+
+	tbl.MaxColWidth = 60
+	tbl.AddRow("NAME", "REVISION", "UPDATED", "STATUS", "CHART", "NAMESPACE")
+	for i := 0; i <= len(releases)-1; i++ {
+		r := releases[i]
+		tbl.AddRow(r.name, r.revision, r.updated, r.status, r.chart, r.namespace)
 	}
+	return tbl.Bytes()
 }
