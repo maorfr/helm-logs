@@ -4,6 +4,7 @@ import:
   version: v1.2.0
   subpackages:
   - proto
+- package: github.com/gosuri/uitable
 - package: github.com/spf13/cobra
   version: v0.0.3
 - package: k8s.io/apimachinery
