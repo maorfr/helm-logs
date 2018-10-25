@@ -6,9 +6,11 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -24,7 +26,6 @@ import (
 
 var (
 	namespace       string
-	storage         string
 	since           time.Duration
 	tillerNamespace string
 	label           string
@@ -39,7 +40,6 @@ func main() {
 
 	f := cmd.Flags()
 	f.StringVar(&namespace, "namespace", "", "show releases within a specific namespace")
-	f.StringVar(&storage, "storage", "cfgmaps", "storage type of releases. One of: 'cfgmaps', 'secrets'")
 	f.DurationVar(&since, "since", time.Duration(1000000*time.Hour), "Only return logs newer than a relative duration like 5s, 2m, or 3h. Defaults to all logs.")
 	f.StringVar(&tillerNamespace, "tiller-namespace", "kube-system", "namespace of Tiller")
 	f.StringVarP(&label, "label", "l", "OWNER=TILLER", "label to select tiller resources by")
@@ -50,6 +50,7 @@ func main() {
 }
 
 func run(cmd *cobra.Command, args []string) error {
+	storage := getTillerStorage("", tillerNamespace)
 	releases, err := listReleases(namespace, storage, tillerNamespace, label, since)
 	if err != nil {
 		return err
@@ -57,6 +58,31 @@ func run(cmd *cobra.Command, args []string) error {
 
 	print(releases)
 	return nil
+}
+
+func getTillerStorage(kubeContext, tillerNamespace string) string {
+	clientset := getClientSet(kubeContext)
+	coreV1 := clientset.CoreV1()
+	listOptions := metav1.ListOptions{
+		LabelSelector: "name=tiller",
+	}
+	pods, err := coreV1.Pods(tillerNamespace).List(listOptions)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if len(pods.Items) == 0 {
+		log.Fatal("Found 0 tiller pods")
+	}
+
+	storage := "cfgmaps"
+	for _, c := range pods.Items[0].Spec.Containers[0].Command {
+		if strings.Contains(c, "secret") {
+			storage = "secrets"
+		}
+	}
+
+	return storage
 }
 
 type releaseData struct {
@@ -222,4 +248,33 @@ func formatAsTable(releases []releaseData) []byte {
 		tbl.AddRow(r.name, r.revision, r.updated, r.status, r.chart, r.namespace)
 	}
 	return tbl.Bytes()
+}
+
+func getClientSet(kubeContext string) *kubernetes.Clientset {
+	var kubeconfig string
+	if kubeConfigPath := os.Getenv("KUBECONFIG"); kubeConfigPath != "" {
+		kubeconfig = kubeConfigPath
+	} else {
+		kubeconfig = filepath.Join(os.Getenv("HOME"), ".kube", "config")
+	}
+
+	config, err := buildConfigFromFlags(kubeContext, kubeconfig)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
+	return clientset
+}
+
+func buildConfigFromFlags(context, kubeconfigPath string) (*rest.Config, error) {
+	return clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+		&clientcmd.ClientConfigLoadingRules{ExplicitPath: kubeconfigPath},
+		&clientcmd.ConfigOverrides{
+			CurrentContext: context,
+		}).ClientConfig()
 }
