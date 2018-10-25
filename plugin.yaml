@@ -1,6 +1,6 @@
 name: "logs"
 # Version is the version of Helm plus the number of official builds for this plugin
-version: "2.9.1+1"
+version: "2.9.1+2"
 usage: "print logs of changed Helm releases"
 description: "Print logs of changed Helm releases"
 command: "$HELM_PLUGIN_DIR/helmlogs"
