@@ -17,7 +17,6 @@ $ helm logs [flags]
   -l, --label string              label to select tiller resources by (default "OWNER=TILLER")
       --namespace string          show releases within a specific namespace
       --since duration            Only return logs newer than a relative duration like 5s, 2m, or 3h. Defaults to all logs. (default 1000000h0m0s)
-      --storage string            storage type of releases. One of: 'cfgmaps', 'secrets' (default "cfgmaps")
       --tiller-namespace string   namespace of Tiller (default "kube-system")
 ```
 
