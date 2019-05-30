@@ -36,17 +36,15 @@ this is how recommend doing it.
 
 First, set up your environment:
 
-- You need to have [Go](http://golang.org) installed. Make sure to set `$GOPATH`
-- If you don't have [Glide](http://glide.sh) installed, this will install it into
-  `$GOPATH/bin` for you.
+- You need to have [Go](http://golang.org) >= 1.11 installed (we use `go modules`)
 
-Clone this repo into your `$GOPATH`. You can use `go get -d github.com/maorfr/helm-logs`
+Clone the repo (not necessarily into your `$GOPATH`). You can use `go get -d github.com/maorfr/helm-logs` if you plan to work inside `$GOPATH`.
 for that.
 
 ```
-$ cd $GOPATH/src/github.com/maorfr/helm-logs
+$ cd <workdir>/github.com/maorfr/helm-logs
 $ make bootstrap build
-$ SKIP_BIN_INSTALL=1 helm plugin install $GOPATH/src/github.com/maorfr/helm-logs
+$ SKIP_BIN_INSTALL=1 helm plugin install <workdir>/github.com/maorfr/helm-logs
 ```
 
 That last command will skip fetching the binary install and use the one you
