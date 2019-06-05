@@ -232,13 +232,10 @@ func decodeRelease(data string) (*rspb.Release, error) {
 
 func print(releases []releaseData) {
 	if len(releases) == 0 {
+		fmt.Println("Nothing to show (try using a wider time range or a different namespace)")
 		return
 	}
 
-	fmt.Println((string)(formatAsTable(releases)))
-}
-
-func formatAsTable(releases []releaseData) []byte {
 	tbl := uitable.New()
 
 	tbl.MaxColWidth = 60
@@ -247,7 +244,8 @@ func formatAsTable(releases []releaseData) []byte {
 		r := releases[i]
 		tbl.AddRow(r.name, r.revision, r.updated, r.status, r.chart, r.namespace)
 	}
-	return tbl.Bytes()
+
+	fmt.Println(tbl.String())
 }
 
 func getClientSet(kubeContext string) *kubernetes.Clientset {
